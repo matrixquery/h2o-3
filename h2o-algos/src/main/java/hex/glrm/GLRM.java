@@ -1598,34 +1598,55 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
       int tArowEnd = (int) cs[0]._len+tArowStart-1; // last row index
       Chunk[] xChunks = new Chunk[_parms._k*2]; // number of columns, store old and new X
       int startxcidx = cs[0].cidx();
-      ArrayList<Integer> xChunkIndices= ObjCalcW.findXChunkIndices(tArowStart, tArowEnd, startxcidx);  // contains x chunks to get
+      ArrayList<Integer> xChunkIndices= ObjCalcW.findXChunkIndices(_xVecs, tArowStart, tArowEnd, startxcidx, _yt);  // contains x chunks to get
+      int numColIndexOffset = _yt._catOffsets[_ncats]-_ncats;   // index into xframe numerical columns
 
       if (_yt._numLevels[0] > 0) {
         xy = new double[_yt._numLevels[0]]; // maximum categorical level column is always the first one
         grad = new double[_yt._numLevels[0]];
       }
 
+      ObjCalcW.getXChunk(_xVecs, xChunkIndices.remove(0), xChunks); // get the first xFrame chunk
+      int xChunkRowStart = (int) xChunks[0].start();   // first row index of xFrame
+      int xChunkSize = (int) xChunks[0]._len;   // number of rows in xFrame
+      int xRow = 0;
+      int tARow = 0;
+      assert ((tArowStart >= xChunkRowStart) && (tArowStart < (xChunkRowStart+xChunkSize)));  // xFrame has T(A) start
+
       // deal with categorical data first
-      for (int row = 0; row < _ncats; row++) {  // go through each row of T(A), same data type
-        int catRowLevel = _yt._numLevels[row];
+      for (int rowIndex = 0; rowIndex < _ncats; rowIndex++) {  // go through each row of T(A), same data type\
+        tARow = rowIndex+tArowStart;  // true row index of T(A)
+        int catRowLevel = _yt._numLevels[rowIndex];
 
         // Compute gradient of objective at row
         // Categorical columns
-        for (int col = 0; col < cs.length; col++) {
-          double a = cs[col].atd(row);    // store T(A) in column wise
+        for (int colIndex = 0; colIndex < cs.length; colIndex++) {
+          double a = cs[colIndex].atd(rowIndex);    // store T(A) in column wise
           if (Double.isNaN(a)) continue;   // Skip missing observations in row
-          double cweight = chkweight[col];
+          double cweight = chkweight[colIndex];
           Arrays.fill(xy, 0, catRowLevel, 0);  // reset xy before accumulate sum
 
-          // Calculate x_i * Y_j where Y_j is sub-matrix corresponding to categorical col j
-          for (int level = 0; level < catRowLevel ; level++) {
-            for (int k = 0; k < _ncolX; k++) {
-              xy[level] += chk_xold(cs, k).atd(row) * _yt.getCat(j, level, k);
+          for (int level=0; level < catRowLevel; level++) { // one element of T(A) composed of several of XY
+            xRow = level+_yt._catOffsets[tARow]-xChunkRowStart; // relative row
+
+            if (xRow >= xChunkSize) {  // load in new chunk of xFrame
+              if (xChunkIndices.size() < 1) {
+                Log.err("GLRM train", "Chunks mismatch between A transpose and X frame.");
+              } else {
+                ObjCalcW.getXChunk(_xVecs, xChunkIndices.remove(0), xChunks); // get a xVec chunk
+
+                xChunkRowStart = (int) xChunks[0].start();   // first row index of xFrame
+                xChunkSize = (int) xChunks[0]._len;   // number of rows in xFrame
+                xRow = level+_yt._catOffsets[tARow]-xChunkRowStart;
+              }
+            }
+            for (int innerCol = 0; innerCol < _parms._k; innerCol++) {
+              xy[level] += ObjCalcW.xFrameVec(xChunks, innerCol, _parms._k).atd(xRow) * _yt._archetypes[colIndex][innerCol];
             }
           }
 
           // Gradient wrt x_i is matrix product \grad L_{i,j}(x_i * Y_j, A_{i,j}) * Y_j'
-          double[] weight = _lossFunc[j].mlgrad(xy, (int) a[j], grad, catRowLevel );
+          double[] weight = _lossFunc[rowIndex].mlgrad(xy, (int) a[j], grad, catRowLevel );
           if (_yt._transposed) {
             for (int c = 0; c < catColJLevel ; c++) {
               int cidx = _yt.getCatCidx(j, c);
@@ -1887,7 +1908,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
 						_normMul = normMul;
 				}
 
-				private Chunk xFrameVec(Chunk[] chks, int c, int offset) {
+				private static Chunk xFrameVec(Chunk[] chks, int c, int offset) {
 						return chks[offset + c];
 				}
 
