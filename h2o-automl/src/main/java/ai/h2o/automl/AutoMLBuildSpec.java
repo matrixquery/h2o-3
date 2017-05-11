@@ -49,6 +49,7 @@ public class AutoMLBuildSpec extends Iced {
     public String project = null;
     public String loss = "AUTO";  // TODO: plumb through
     public HyperSpaceSearchCriteria.RandomDiscreteValueSearchCriteria stopping_criteria;
+    public String fold_column = null;
   }
 
   /**

@@ -33,6 +33,10 @@ public class AutoMLBuildSpecV99 extends SchemaV3<AutoMLBuildSpec, AutoMLBuildSpe
 
     @API(help="stopping criteria for the search", direction=API.Direction.INPUT)
     public HyperSpaceSearchCriteriaV99.RandomDiscreteValueSearchCriteriaV99 stopping_criteria;
+
+    @API(help="fold column for models", direction=API.Direction.INPUT,required = false)
+    public String fold_column;
+
   } // class AutoMLBuildControlV99
 
   /**

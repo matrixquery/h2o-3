@@ -582,6 +582,7 @@ public final class AutoML extends Lockable<AutoML> implements TimedH2ORunnable {
     setCommonModelBuilderParams(drfParameters);
 
     drfParameters._stopping_tolerance = this.buildSpec.build_control.stopping_criteria.stopping_tolerance();
+    drfParameters._fold_column = this.buildSpec.build_control.fold_column;
 
     Job randomForestJob = trainModel(null, "drf", drfParameters);
     return randomForestJob;
@@ -597,6 +598,7 @@ public final class AutoML extends Lockable<AutoML> implements TimedH2ORunnable {
     drfParameters._histogram_type = SharedTreeModel.SharedTreeParameters.HistogramType.Random;
 
     drfParameters._stopping_tolerance = this.buildSpec.build_control.stopping_criteria.stopping_tolerance();
+    drfParameters._fold_column = this.buildSpec.build_control.fold_column;
 
     Job randomForestJob = trainModel(ModelBuilder.defaultKey("XRT"), "drf", drfParameters);
     return randomForestJob;
