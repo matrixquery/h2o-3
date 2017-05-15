@@ -6,10 +6,10 @@
     <script src="node_modules/echarts/dist/echarts.min.js"></script>
     <script src="node_modules/echarts/dist/echarts.min.js"></script>
     <script src="node_modules/underscore/underscore-min.js"></script>
-    <!--<link rel="stylesheet" href="../../flow/css/flow-lib.css" type="text/css">-->
-    <!--<link rel="stylesheet" href="../../flow/css/flow.css" type="text/css">-->
-    <link rel="stylesheet" href="css/flow-lib.css" type="text/css">
-    <link rel="stylesheet" href="css/flow.css" type="text/css">
+    <link rel="stylesheet" href="../../flow/css/flow-lib.css" type="text/css">
+    <link rel="stylesheet" href="../../flow/css/flow.css" type="text/css">
+    <!--<link rel="stylesheet" href="css/flow-lib.css" type="text/css">-->
+    <!--<link rel="stylesheet" href="css/flow.css" type="text/css">-->
 </head>
 <body>
     <div class="flow-box-header" style="margin-left:50px">
@@ -27,8 +27,13 @@
             Column: <select id="columns"> </select>
             Value:  <input  id="search-value" type="text" name="value">
             <button id="search-trigger">Search</button>
+            &nbsp&nbsp&nbsp
+            Plot: <select id="cluster"></select>
     </div>
     <div id="main" style="width: 1200px;height:600px;margin-top:20px"></div>
+    <div class="flow-plot">
+        <div id="table" class="lz-table" style="margin:auto;width:50%;padding-top:0px;padding-right:20px;padding-left:20px"></div>
+    </div>
     </div>
 </body>
 </html>

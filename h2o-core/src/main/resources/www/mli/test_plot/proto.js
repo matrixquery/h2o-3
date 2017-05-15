@@ -5,7 +5,7 @@ var frame_id; // the original input frame
 var klime_frame_id; // the klime frame (contains reason codes)
 var ModelInterpretability;
 (function (ModelInterpretability) {
-    function plot_klime(data, title, single_row) {
+    function plot_klime(data, title, single_row_idx) {
         var option = {
             title: {
                 text: title,
@@ -35,17 +35,7 @@ var ModelInterpretability;
                     data: data.columns[data.column_names.indexOf("predict_klime")],
                     lineStyle: { normal: { width: 0 } },
                     showAllSymbol: true,
-                    symbolSize: 1,
-                    markLine: {
-                        data: [{
-                            name: "Row Queried",
-                            xAxis: 2000
-                        },
-                        {
-                            name: "foo",
-                            xAxis: 2000
-                        }]
-                    }
+                    symbolSize: 1
                 }
             ].concat(data.column_names.map(function (x) {
                 if (x.match('^rc_')) {
@@ -61,8 +51,20 @@ var ModelInterpretability;
                 }
             })).filter(function (x) { return x; })
         };
-        if (single_row == null) {
-            console.log("no single row to append");
+        if (single_row_idx != NaN) {
+            option.series[1]['markLine'] = {
+                data: [
+                    { name: "Queried Row",
+                        xAxis: single_row_idx
+                    },
+                    { name: "Queried Row",
+                        xAxis: single_row_idx
+                    }
+                ],
+                symbolSize: 0,
+                lineStyle: { normal: { width: 0.5, type: 'solid' } },
+                label: { normal: { show: false } }
+            };
         }
         myChart.setOption(option);
     }
@@ -81,7 +83,7 @@ var ModelInterpretability;
             success: function (data) {
                 console.log(data);
                 savedData = data;
-                plot_klime(data, "Global KLIME Plot", null);
+                plot_klime(data, "Global KLIME Plot", NaN);
                 // plot by klime cluster
                 // click / select id value, generate cluster, permanent pinned row for that query
             }
@@ -96,17 +98,18 @@ var ModelInterpretability;
             klime_frame_id = data.klime_frame_id.name;
             frame_id = data.frame_id.name;
             console.log(agg_frame_id);
+            resizePlot();
             load_klime(agg_frame_id);
             loadSearchBar(frame_id);
         });
     }
     function resizePlot() {
-        $('#main').css('height', window.innerHeight).css('width', window.innerWidth);
+        $('#main').css('height', window.innerHeight * (2.0 / 3.0)).css('width', window.innerWidth);
         myChart.resize();
     }
     function loadSearchBar(frame_id) {
         $.get("http://localhost:54321/3/Frames/" + frame_id + "/columns", function (data) {
-            var columns = data.frames[0].columns.filter(function (col) { return ["int", "enum"].indexOf(col.type) > 0; });
+            var columns = data.frames[0].columns.filter(function (col) { return ["int", "enum"].indexOf(col.type) >= 0; });
             var labels = columns.map(function (x) { return x.label; });
             console.log(labels);
             for (var _i = 0, labels_1 = labels; _i < labels_1.length; _i++) {
@@ -117,7 +120,22 @@ var ModelInterpretability;
     }
     function loadTable(data) {
         // create a table with data from pre-klime frame
-        console.log(data);
+        $('#table').empty();
+        var content = '<table>';
+        for (var i = 0; i < data.frames[0].column_count; i++) {
+            var dataVal = void 0;
+            if (data.frames[0].columns[i].type == "enum") {
+                // get the enum string
+                dataVal = data.frames[0].columns[i].domain[data.frames[0].columns[i].data[0]];
+            }
+            else {
+                dataVal = data.frames[0].columns[i].data[0];
+            }
+            content += '<tr><td>' + data.frames[0].columns[i].label + '</td><td>' +
+                dataVal + '</td></tr>';
+        }
+        content += '</table>';
+        $('#table').append(content);
     }
     function plotCluster(data) {
         console.log(data);
@@ -127,6 +145,8 @@ var ModelInterpretability;
         var cluster_idx = savedData.column_names.indexOf("cluster_klime");
         var modelpred_idx = savedData.column_names.indexOf("model_pred");
         var single_row_pushed = false;
+        var single_row_idx = NaN;
+        var push_count = 0;
         for (var i = 0; i < savedData.number_of_columns; i++) {
             new_columns.push([]);
         }
@@ -139,20 +159,25 @@ var ModelInterpretability;
                 if (!single_row_pushed &&
                     data.frames[0].columns[modelpred_idx].data[0] <= savedData.columns[modelpred_idx][i]) {
                     for (var j = 0; j < savedData.number_of_columns; j++) {
-                        if (savedData.number_of_columns - j < 3) {
+                        if (savedData.number_of_columns - j == 2) {
                             new_columns[j].push(NaN);
                         }
+                        else if (savedData.number_of_columns - j == 1) {
+                            new_columns[j].push(7000);
+                        }
                         else {
-                            new_columns[j].push(data.frames[0].columns[j].data[0].toFixed(4));
+                            new_columns[j].push(data.frames[0].columns[j].data[0].toFixed(3));
                         }
                     }
                     single_row_pushed = true;
+                    single_row_idx = push_count;
                 }
+                push_count += 1;
             }
         }
-        var new_data = savedData;
+        var new_data = $.extend(true, {}, savedData);
         new_data.columns = new_columns;
-        plot_klime(new_data, "Cluster " + clusterNumber + " KLIME Plot", null);
+        plot_klime(new_data, "Cluster " + clusterNumber + " KLIME Plot", single_row_idx + 1);
     }
     function pullOneRow(data) {
         // get one row from the orig frame as well as the klime frame for the RCs
