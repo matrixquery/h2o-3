@@ -25,7 +25,10 @@ import org.joda.time.format.DateTimeFormat;
 import org.joda.time.format.DateTimeFormatter;
 import water.*;
 import water.api.ModelCacheManager;
-import water.fvec.*;
+import water.fvec.C0DChunk;
+import water.fvec.Chunk;
+import water.fvec.Frame;
+import water.fvec.Vec;
 import water.util.*;
 
 import java.util.ArrayList;
@@ -679,6 +682,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
       int colCount = _ncolA;
 						ObjCalc objtsk = null;
 						ObjCalcW objtskw = null;
+      Archetypes yt = null;
 
       try {
         init(true);   // Initialize + Validate parameters
@@ -761,7 +765,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
         double[/*k*/][/*features*/] yinit = initialXY(tinfo, dinfo._adaptedFrame, model, na_cnt); // on transformed A
 
         // Store Y' for more efficient matrix ops (rows = features, cols = k rank)
-        Archetypes yt = new Archetypes(transpose(yinit), true, tinfo._catOffsets, numLevels);
+        yt = new Archetypes(transpose(yinit), true, tinfo._catOffsets, numLevels);
         Archetypes ytnew = yt;
 
         double yreg = _parms._regularization_y.regularize(yt._archetypes);
@@ -783,7 +787,16 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
             int trueIndex = index-colCount;
             yinit[trueIndex] = new FrameUtils.Vec2ArryTsk(colCount).doAll(dinfo._adaptedFrame.vec(trueIndex+_ncolA)).res;
           }
-          yt = new Archetypes(transpose(yinit), true, tinfo._catOffsets, numLevels);
+
+          // set weights to _weights in archetype class instead of as part of frame
+          double[] tempWeights = new double[(int)_train.numRows()];
+          if (weightId < 0) { //
+            Arrays.fill(tempWeights,1);
+          } else {
+            tempWeights = new FrameUtils.Vec2ArryTsk(weightId).doAll(dinfo._adaptedFrame.vec(weightId)).res;
+          }
+
+          yt = new Archetypes(transpose(yinit), true, tinfo._catOffsets, numLevels, tempWeights);
           ytnew = yt;
         }
 
@@ -933,14 +946,28 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
         if (dinfo != null) dinfo.remove();
         if (xinfo != null) xinfo.remove();
         if (tempinfo != null) tempinfo.remove();
-
+        // copy what is in  XeY into archetypes
+        if (xwF != null) {
+          yt._archetypes = transpose(new FrameUtils.Vecs2ArryTsk(_ncolY, _parms._k).doAll(xwF).res);
+        }
         // if (x != null && !_parms._keep_loading) x.delete();
         // Clean up unused copy of X matrix
         if (fr != null) {
-          if (overwriteX) {
-            for (int i = 0; i < _ncolX; i++) fr.vec(idx_xold(i, _ncolA)).remove();
+          if (_wideDataset) { // for wideDataset, fr does not contain X, xwF does
+            fr.remove();
+            if (!overwriteX) {
+              if (yt._transposed) {
+                fr = new water.util.ArrayUtils().frame(transpose(yt._archetypes));
+              } else {
+                fr = new water.util.ArrayUtils().frame(yt._archetypes);
+              }
+            }
           } else {
-            for (int i = 0; i < _ncolX; i++) fr.vec(idx_xnew(i, _ncolA, _ncolX)).remove();
+            if (overwriteX) {
+              for (int i = 0; i < _ncolX; i++) fr.vec(idx_xold(i, _ncolA)).remove();
+            } else {
+              for (int i = 0; i < _ncolX; i++) fr.vec(idx_xnew(i, _ncolA, _ncolX)).remove();
+            }
           }
         }
         Scope.untrack(keep);
@@ -2071,7 +2098,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
 				final double[] _normMul;
 				final int _weightId;
 				final boolean _regX;      // Should I calculate regularization of (old) X matrix?
-				Frame _xVecs;        // store X and X new
+				Frame _xVecs;        // store XeY and XeY new
 
 				// Output
 				double _loss;       // Loss evaluated on A - XY using new X (and current Y)
@@ -2162,7 +2189,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
 
         } else {  // looking into numerical columns here
           // perform comparison for numericals
-          xRow = rowIndex-xChunkRowStart+numColIndexOffset;
+          xRow = rowIndex-xChunkRowStart+numColIndexOffset; //index into x frame which expanded categoricals
 
           if (xRow >= xChunkSize) {  // load in new chunk of xFrame
             if (xChunkIndices.size() < 1) {
@@ -2176,9 +2203,9 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
             }
           }
 
-          int numRow = tARow-_ncats;
+          int numRow = tARow-_ncats;    // index into T(A) without categorical type expansion
           for (int colIndex=0; colIndex < cs.length; colIndex++) {
-            double a = cs[colIndex].atd(rowIndex);
+            double a = cs[colIndex].atd(rowIndex);  // access dataset T(A)
             if (Double.isNaN(a)) continue;
             double txy = 0.0;
             for (int innerCol=0; innerCol < _parms._k; innerCol++) {
@@ -2212,6 +2239,12 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
 				private static ArrayList<Integer> findXChunkIndices(Frame xVecs, int taStart, int taEnd, int startTAcidx, Archetypes yt) {
 				  ArrayList<Integer> xcidx = new ArrayList<Integer>();
       int xNChunks = xVecs.anyVec().nChunks();
+
+      if (xNChunks == 1) {
+        xcidx.add(0);
+        return xcidx;   // only one chunk.  Everything is there.
+      }
+
       Chunk[] xChunks = new Chunk[1];
       int numCats = yt._catOffsets.length-1;
 
@@ -2244,7 +2277,6 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
           xcidx.add(index);
         }
       }
-
 				  return xcidx;
     }
 

@@ -136,6 +136,33 @@ public class FrameUtils {
     }
   }
 
+  public static class Vecs2ArryTsk extends MRTask<Vecs2ArryTsk> {
+    final int dim1;   // treat as row
+    final int dim2;   // treat as column
+    public double [][] res;
+    public Vecs2ArryTsk(int dim1, int dim2)
+    {
+      this.dim1 = dim1;
+      this.dim2 = dim2;
+    }
+
+    @Override public void setupLocal(){
+      res = MemoryManager.malloc8d(dim1, dim2);
+    }
+    @Override public void map(Chunk[] c){
+      final int off = (int)c[0].start();
+      for (int colIndex = 0; colIndex < c.length; colIndex++) {
+        for (int rowIndex = 0; rowIndex < c[colIndex]._len; rowIndex++) {
+          res[off+rowIndex][colIndex] = c[colIndex].atd(rowIndex);
+        }
+      }
+    }
+
+    @Override public void reduce(Vecs2ArryTsk other){
+      ArrayUtils.add(res, other.res);
+    }
+  }
+
   public static double [] asDoubles(Vec v){
     if(v.length() > 100000) throw new IllegalArgumentException("Vec is too big to be extracted into array");
     return new Vec2ArryTsk((int)v.length()).doAll(v).res;
