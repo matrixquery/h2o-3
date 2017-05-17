@@ -2139,6 +2139,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
       int tArowEnd = numTArow+tArowStart-1; // last row index
       Chunk[] xChunks = new Chunk[_parms._k*2]; // number of columns, store old and new X
       int startxcidx = cs[0].cidx();
+      Log.info("Processing chunk idx "+startxcidx+" start row index is "+tArowStart+" and end row index is "+tArowEnd);
 
       if ((_processedCidx.size() == 0) || (!_processedCidx.contains(startxcidx))) {
         _newChunk = true;
@@ -2149,7 +2150,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
         calXOldReg(_yt._archetypes, xrow, _yt._archetypes.length);
       }
 
-      if (_newChunk) {
+ //     if (_newChunk) {
         _processedCidx.add(startxcidx);
         ArrayList<Integer> xChunkIndices = findXChunkIndices(_xVecs, tArowStart, tArowEnd, startxcidx, _yt);  // contains x chunks to get
         double[] xy = null;   // store the vector of categoricals for one column
@@ -2229,7 +2230,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
             }
           }
         }
-      }
+     // }
 				}
 
 				private void calXOldReg(double[][] yvals, double[] xrow, int yLen) {
@@ -2313,7 +2314,7 @@ public class GLRM extends ModelBuilder<GLRMModel, GLRMModel.GLRMParameters, GLRM
 				}
 
 				@Override public void reduce(ObjCalcW other) {
-      if (_newChunk || other._newChunk)
+   //   if (_newChunk || other._newChunk)
         _loss += other._loss;
 				}
 		}
