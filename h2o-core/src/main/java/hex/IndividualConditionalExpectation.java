@@ -127,14 +127,45 @@ public class IndividualConditionalExpectation extends Lockable<IndividualConditi
                     };
                     fs.add(H2O.submitTask(ice));
                 }
+                final double meanResponse[] = new double[colVals.length];
+                // loop over column values (fill one IndividualConditionalExpectation)
+                for (int k = 0; k < colVals.length; ++k) {
+                    final double value = colVals[k];
+                    final int which = k;
+                    H2O.H2OCountedCompleter pdp = new H2O.H2OCountedCompleter() {
+                        @Override
+                        public void compute2() {
+                            Frame fr = _frame_id.get();
+                            Frame test = new Frame(fr.names(), fr.vecs());
+                            Vec orig = test.remove(col);
+                            Vec cons = orig.makeCon(value);
+                            if (cat) cons.setDomain(fr.vec(col).domain());
+                            test.add(col, cons);
+                            Frame preds = null;
+                            try {
+                                preds = _model_id.get().score(test, Key.make().toString(), _job, false);
+                                if (_model_id.get()._output.nclasses() == 2) {
+                                    meanResponse[which] = preds.vec(2).mean();
+                                } else if (_model_id.get()._output.nclasses() == 1) {
+                                    meanResponse[which] = preds.vec(0).mean();
+                                } else throw H2O.unimpl();
+                            } finally {
+                                if (preds != null) preds.remove();
+                            }
+                            cons.remove();
+                            tryComplete();
+                        }
+                    };
+                    fs.add(H2O.submitTask(pdp));
+                }
                 fs.blockForPending();
 
                 _ind_cond_exp_data[i] = new TwoDimTable("IndividualConditionalExpectation",
                         ("Individual Conditional Expectation Plot of model " + _model_id + " on column '" + _cols[i] + "'" + " on row " + _row),
                         new String[actualbins],
-                        new String[]{_cols[i], "response"},
-                        new String[]{cat ? "string" : "double", "double"},
-                        new String[]{cat ? "%s" : "%5f", "%5f"}, null);
+                        new String[]{_cols[i], "response","mean_response"},
+                        new String[]{cat ? "string" : "double", "double","double"},
+                        new String[]{cat ? "%s" : "%5f", "%5f","%5f"}, null);
                 for (int j = 0; j < response.length; ++j) {
                     if (fr.vec(col).isCategorical()) {
                         _ind_cond_exp_data[i].set(j, 0, fr.vec(col).domain()[(int) colVals[j]]);
@@ -142,6 +173,7 @@ public class IndividualConditionalExpectation extends Lockable<IndividualConditi
                         _ind_cond_exp_data[i].set(j, 0, colVals[j]);
                     }
                     _ind_cond_exp_data[i].set(j, 1, response[j]);
+                    _ind_cond_exp_data[i].set(j, 2, meanResponse[j]);
                 }
                 _job.update(1);
                 update(_job);

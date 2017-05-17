@@ -3005,7 +3005,7 @@ h2o.icePlot <- function(object, data, row, cols, destination_key, nbins=20, plot
   parms$cols <- paste0("[", paste (args$x, collapse = ','), "]")
   parms$model_id  <- attr(object, "model_id")
   parms$frame_id <- attr(data, "id")
-  parms$row <- row
+  parms$row <- row-1
   parms$nbins <- nbins
   if(!missing(destination_key)) parms$destination_key = destination_key
 
@@ -3016,7 +3016,7 @@ h2o.icePlot <- function(object, data, row, cols, destination_key, nbins=20, plot
 
   ## Change feature names to the original supplied, the following is okay because order is preserved
   ice <- res$ind_cond_exp_data
-  for(i in 1:length(ice)) if(!all(is.na( ice[[i]])) ) names(ice[[i]]) <- c(cols[i], "response")
+  for(i in 1:length(ice)) if(!all(is.na( ice[[i]])) ) names(ice[[i]]) <- c(cols[i], "response","mean_response")
 
   col_types = unlist(h2o.getTypes(data))
   col_names = names(data)
@@ -3024,7 +3024,14 @@ h2o.icePlot <- function(object, data, row, cols, destination_key, nbins=20, plot
     if(!all(is.na(pp))) {
       type = col_types[which(col_names == names(pp)[1])]
       if(type == "enum") pp[,1] = as.factor( pp[,1])
-      plot(pp[,1:2], type = "l", main = attr(x,"description") )
+      plot(x=pp[,1],y=pp[,2], type = c("b"), 
+           main = paste0("Individual Conditional Expectation Plot for ", names(pp)[1], " & Row ", row),
+           xlab = names(pp)[1],
+           ylab = "Response",
+           ylim=range(min(c(pp[,2],pp[,3])),max(c(pp[,2],pp[,3]))))
+      lines(x=pp[,1],y=pp[,3],col ="blue",type="b")
+      legend("topright",c("Mean Response","Row Response"),lty=c(1,1),lwd=c(2.5,2.5),col=c("blue","black"))
+      par(oma=c(0,0,2,0))
     } else {
       print("Individual Conditional Expectation not calculated--make sure nbins is as high as the level count")
     }
@@ -3034,7 +3041,7 @@ h2o.icePlot <- function(object, data, row, cols, destination_key, nbins=20, plot
   if(length( ice) == 1) {
     return(ice[[1]])
   } else {
-    return(ice)
+    return(res)
   }
 }
 
