@@ -151,8 +151,8 @@ public class FrameUtils {
     }
     @Override public void map(Chunk[] c){
       final int off = (int)c[0].start();
-      for (int colIndex = 0; colIndex < c.length; colIndex++) {
-        for (int rowIndex = 0; rowIndex < c[colIndex]._len; rowIndex++) {
+      for (int colIndex = 0; colIndex < dim2; colIndex++) {
+        for (int rowIndex = 0; rowIndex < dim1; rowIndex++) {
           res[off+rowIndex][colIndex] = c[colIndex].atd(rowIndex);
         }
       }
