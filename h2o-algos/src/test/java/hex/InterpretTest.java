@@ -54,7 +54,10 @@ public class InterpretTest extends TestUtil {
             if (interpret._interpret_frame!=null) interpret._interpret_frame.remove();
             if (interpret._klimeFrame!=null) interpret._klimeFrame.remove();
             if (interpret._modelPreds!=null) interpret._modelPreds.remove();
-            if (interpret.agg!=null) interpret.agg.remove();
+            if (interpret.agg!=null) {
+                interpret.agg._output._output_frame.remove();
+                interpret.agg.remove();
+            }
             if (interpret!=null) interpret.remove();
         }
     }

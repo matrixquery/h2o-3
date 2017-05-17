@@ -25,6 +25,22 @@ public class InterpretV3 extends SchemaV3<Interpret, InterpretV3> {
   @API(help="Interpret Frame", direction=API.Direction.OUTPUT)
   public KeyV3.FrameKeyV3 interpret_id;
 
+  @SuppressWarnings("unused")
+  @API(help="Intercept Coefficients for clusters", direction=API.Direction.OUTPUT)
+  public double[] cluster_intercepts;
+
+  @SuppressWarnings("unused")
+  @API(help="R2s for clusters", direction=API.Direction.OUTPUT)
+  public double[] cluster_r2s;
+
+  @SuppressWarnings("unused")
+  @API(help="R2 for global klime", direction=API.Direction.OUTPUT)
+  public double global_r2;
+
+  @SuppressWarnings("unused")
+  @API(help="Intercept for global klime", direction=API.Direction.OUTPUT)
+  public double global_intercept;
+
   @API(help="Key to store the destination", direction=API.Direction.INPUT)
   public InterpretKeyV3 destination_key;
 

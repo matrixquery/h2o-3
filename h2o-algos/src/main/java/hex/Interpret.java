@@ -7,13 +7,11 @@ import jsr166y.CountedCompleter;
 import org.apache.commons.lang.ArrayUtils;
 import water.*;
 import water.api.InterpretKeyV3;
-import water.api.schemas3.KeyV3;
 import water.fvec.Frame;
 import water.fvec.Vec;
 import water.rapids.Rapids;
 import water.util.Log;
 import hex.klime.KLime;
-import java.util.Arrays;
 
 /**
  * Create a Frame from scratch
@@ -31,6 +29,10 @@ public class Interpret extends Lockable<Interpret> {
   public Frame _interpret_frame;
   public Frame _klimeFrame;
   public Frame _modelPreds;
+  public double[] _cluster_intercepts;  // glm intercept by cluster
+  public double[] _cluster_r2s;   // glm r2s by cluster
+  public double _global_intercept;
+  public double _global_r2;
 
   public Interpret(Key<Interpret> dest) {
     super(dest);
@@ -48,7 +50,7 @@ public class Interpret extends Lockable<Interpret> {
     // update the _model_metrics only on the temporary live object, not in DKV.
     // At the end, we call model.remove() and we need those model metrics to be
     // deleted with it, so we must make sure we keep the live POJO alive.
-    _job.start(new InterpretDriver(), 3); //predict, run klime, join klime pred frame
+    _job.start(new InterpretDriver(), 4); //predict, run klime, join klime pred frame
     return _job;
   }
 
@@ -90,6 +92,14 @@ public class Interpret extends Lockable<Interpret> {
         klBuilder._parms._response_column = "model_pred";
         klBuilder._parms._train = _frame_id;
         kLimeModel = klBuilder.trainModel().get();
+        _cluster_intercepts = new double[kLimeModel._output._regressionModels.length];
+        _cluster_r2s = new double[kLimeModel._output._regressionModels.length];
+        for (int i = 0; i < kLimeModel._output._regressionModels.length; i++) {
+          _cluster_intercepts[i] = kLimeModel._output.getClusterModel(i).coefficients().get("Intercept");
+          _cluster_r2s[i] = ((ModelMetricsSupervised) kLimeModel._output.getClusterModel(i)._output._training_metrics).r2();
+        }
+        _global_r2 = ((ModelMetricsSupervised) kLimeModel._output._globalRegressionModel._output._training_metrics).r2();
+        _global_intercept = kLimeModel._output._globalRegressionModel.coefficients().get("Intercept");
         _klime_frame_id = Key.<Frame>make();
         _job.update(2,"Scoring KLime:");
         _klimeFrame = kLimeModel.score(fr,_klime_frame_id.toString(),_job,false);
@@ -97,13 +107,20 @@ public class Interpret extends Lockable<Interpret> {
         DKV.put(_klimeFrame);
         // Keep the KLimeFrame for user lookups
 
+        // Need a default index to help with lookups from plot ui
+        _klimeFrame.add(new Frame(new String[]{"ones"}, new Vec[]{_klimeFrame.anyVec().makeCon(1.0)}));
+        String rapidsIdxCmd = "(- (cumsum (cols_py " + _klime_frame_id + " \'ones\') 0) 1)";
+        Frame idxFrame  = Rapids.exec(rapidsIdxCmd).getFrame();
+        idxFrame.setNames(new String[]{"h2oframe_idx"});
+        _klimeFrame.add(idxFrame);
+        _klimeFrame.remove("ones").remove();
 
         // Prep Plotting Frame
         _job.update(2,"Preparing frame plot");
         AggregatorModel.AggregatorParameters parms = new AggregatorModel.AggregatorParameters();
         parms._train = _klimeFrame._key;
         parms._ignored_columns = (String[]) ArrayUtils.addAll(m._parms._ignored_columns,
-          new String[]{"model_pred"});
+          new String[]{"model_pred, h2oframe_idx"});
         Log.info("Aggregator ignored columns: " + parms._ignored_columns.toString());
         long start = System.currentTimeMillis();
         agg = new Aggregator(parms).trainModel().get();
@@ -116,23 +133,14 @@ public class Interpret extends Lockable<Interpret> {
         Frame tmpFrame2 = Rapids.exec(rapidsRoundCmd).getFrame();
         tmpFrame2._key = Key.<Frame>make();
         DKV.put(tmpFrame2);
-        Frame tmpFrame3 = tmpFrame2.sort(new int[]{ArrayUtils.indexOf(tmpFrame2._names, "pred_score")});
+        _interpret_frame = tmpFrame2.sort(new int[]{ArrayUtils.indexOf(tmpFrame2._names, "pred_score")});
         tmpFrame2.remove();
-        tmpFrame3.add(new Frame(new String[]{"ones"},
-                new Vec[]{tmpFrame3.anyVec().makeCon(1.0)}));
-        tmpFrame3._key = Key.<Frame>make();
-        DKV.put(tmpFrame3);
 
-        String rapidsIdxCmd = "(append " + tmpFrame3._key + " (cumsum (cols_py " + tmpFrame3._key +
-                " \'ones\') 0) \'idx\')";
-        _interpret_frame = Rapids.exec(rapidsIdxCmd).getFrame();
         _interpret_frame.remove("pred_score").remove();
-        _interpret_frame.remove("ones").remove();
         _interpret_frame._key = Key.<Frame>make();
         DKV.put(_interpret_frame);
         _interpret_id = _interpret_frame._key;
 
-        tmpFrame3.remove();
       } finally {
         fr.remove("model_pred");
         DKV.put(fr); //update the DKV
